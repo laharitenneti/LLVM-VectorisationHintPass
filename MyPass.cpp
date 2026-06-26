@@ -2,6 +2,7 @@
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Analysis/LoopInfo.h"
 
 using namespace llvm;
 
@@ -10,6 +11,14 @@ namespace {
     PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM) {
       //printing the fxn name
       outs() << "Visiting function: " << F.getName() << "\n";
+
+      //using LoopInfo (LLVM's native tool) to detect loops
+      LoopInfo &LI = FAM.getResult<LoopAnalysis>(F);
+
+       //iterating to find top-level loops in the function
+      for (Loop *L : LI) {
+        outs() << "Found a loop with header: " << L->getHeader()->getName() << "\n";
+      }
       return PreservedAnalyses::all();
     }
   };
