@@ -3,6 +3,9 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Metadata.h"
 
 using namespace llvm;
 
@@ -19,6 +22,35 @@ namespace {
       for (Loop *L : LI) {
         outs() << "Found a loop with header: " << L->getHeader()->getName() << "\n";
       }
+
+      //----- Metadata testing; Constructing an MDNode -----
+      LLVMContext &Ctx = F.getContext();
+
+      //Hint operands
+      MDString *HintName = MDString::get(Ctx, "llvm.loop.vectorize.enable");
+      ConstantInt *TrueVal = ConstantInt::get(Type::getInt1Ty(Ctx), 1);
+      ValueAsMetadata *TrueMD = ValueAsMetadata::get(TrueVal);
+
+      //Building the hint
+      MDNode *VectorizeHint = MDNode::get(Ctx, {HintName, TrueMD});
+
+      //Temporary node for self-referencing
+      MDNode *TempLoopID = MDNode::getTemporary(Ctx, {}).release();
+      MDNode *LoopID = MDNode::get(Ctx, {TempLoopID, VectorizeHint});
+      TempLoopID->replaceAllUsesWith(LoopID);
+      MDNode::deleteTemporary(TempLoopID);
+
+      //print
+      outs() << "Constructed LoopID node: ";
+      LoopID->print(outs());
+      outs() << "\n";
+      outs() << " Hint Node: ";
+      VectorizeHint->print(outs());
+      outs() << "\n";
+      // ----- Metadata testing ends. -----
+
+
+
       return PreservedAnalyses::all();
     }
   };
