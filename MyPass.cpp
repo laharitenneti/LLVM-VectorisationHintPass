@@ -21,37 +21,82 @@ namespace {
        //iterating to find top-level loops in the function
       for (Loop *L : LI) {
         outs() << "Found a loop with header: " << L->getHeader()->getName() << "\n";
+
+        //Identifying the latch block
+        BasicBlock *Latch = L->getLoopLatch();
+        if (!Latch) {
+          outs() << "No single latch found; skipping.\n";
+          continue;
+        }
+
+        //Fetching the branch instruction at the end of the latch
+        BranchInst *BI = dyn_cast<BranchInst>(Latch->getTerminator());
+        if (!BI) {
+          outs() << "Latch terminator is not a branch; skipping.\n";
+          continue;
+        }
+
+        //Fetch the context
+        LLVMContext &Ctx = F.getContext();
+
+        //Building the vectorise hint
+        MDString *HintName = MDString::get(Ctx, "llvm.loop.vectorize.enable");
+        ConstantInt *TrueVal = ConstantInt::get(Type::getInt1Ty(Ctx), 1);
+        ValueAsMetadata *TrueMD = ValueAsMetadata::get(TrueVal);
+        MDNode *VectorizeHint = MDNode::get(Ctx, {HintName, TrueMD});
+
+        //Check existing metadata
+        MDNode *ExistingMD = BI->getMetadata("llvm.loop");
+
+        //Copy it into an empty list
+        SmallVector<Metadata *, 4> MDs;
+        if (ExistingMD) {
+          for (unsigned i = 1; i < ExistingMD->getNumOperands(); i++) { //we ignore the self-referencing node and just add 'mustprogress'
+            MDs.push_back(ExistingMD->getOperand(i));
+          }
+        }
+        MDs.push_back(VectorizeHint);
+
+        //Create the actual metadata node
+        MDNode *TempLoopID = MDNode::getTemporary(Ctx, {}).release();
+        SmallVector<Metadata *, 4> AllOps;
+        AllOps.push_back(TempLoopID);
+        AllOps.append(MDs.begin(), MDs.end());
+        MDNode *LoopID = MDNode::get(Ctx, AllOps);
+        TempLoopID->replaceAllUsesWith(LoopID);
+        MDNode::deleteTemporary(TempLoopID);
+
+        //Attach the metadata node to the loop.
+        BI->setMetadata("llvm.loop", LoopID);
       }
 
-      //----- Metadata testing; Constructing an MDNode -----
-      LLVMContext &Ctx = F.getContext();
+      // //----- Metadata testing; Constructing an MDNode -----
+      // LLVMContext &Ctx = F.getContext();
 
-      //Hint operands
-      MDString *HintName = MDString::get(Ctx, "llvm.loop.vectorize.enable");
-      ConstantInt *TrueVal = ConstantInt::get(Type::getInt1Ty(Ctx), 1);
-      ValueAsMetadata *TrueMD = ValueAsMetadata::get(TrueVal);
+      // //Hint operands
+      // MDString *HintName = MDString::get(Ctx, "llvm.loop.vectorize.enable");
+      // ConstantInt *TrueVal = ConstantInt::get(Type::getInt1Ty(Ctx), 1);
+      // ValueAsMetadata *TrueMD = ValueAsMetadata::get(TrueVal);
 
-      //Building the hint
-      MDNode *VectorizeHint = MDNode::get(Ctx, {HintName, TrueMD});
+      // //Building the hint
+      // MDNode *VectorizeHint = MDNode::get(Ctx, {HintName, TrueMD});
 
-      //Temporary node for self-referencing
-      MDNode *TempLoopID = MDNode::getTemporary(Ctx, {}).release();
-      MDNode *LoopID = MDNode::get(Ctx, {TempLoopID, VectorizeHint});
-      TempLoopID->replaceAllUsesWith(LoopID);
-      MDNode::deleteTemporary(TempLoopID);
+      // //Temporary node for self-referencing
+      // MDNode *TempLoopID = MDNode::getTemporary(Ctx, {}).release();
+      // MDNode *LoopID = MDNode::get(Ctx, {TempLoopID, VectorizeHint});
+      // TempLoopID->replaceAllUsesWith(LoopID);
+      // MDNode::deleteTemporary(TempLoopID);
 
-      //print
-      outs() << "Constructed LoopID node: ";
-      LoopID->print(outs());
-      outs() << "\n";
-      outs() << " Hint Node: ";
-      VectorizeHint->print(outs());
-      outs() << "\n";
-      // ----- Metadata testing ends. -----
+      // //print
+      // outs() << "Constructed LoopID node: ";
+      // LoopID->print(outs());
+      // outs() << "\n";
+      // outs() << " Hint Node: ";
+      // VectorizeHint->print(outs());
+      // outs() << "\n";
+      // // ----- Metadata testing ends. -----
 
-
-
-      return PreservedAnalyses::all();
+      return PreservedAnalyses::none();
     }
   };
 }
