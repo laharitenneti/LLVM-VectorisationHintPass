@@ -1,1 +1,7 @@
 build/
+runO3
+runWithPass2D
+runWithoutPass2D
+runWithPass
+runWithoutPass
+.DS_Store
